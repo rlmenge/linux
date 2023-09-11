@@ -4,7 +4,7 @@
  *
  * Portions of this code is derived from hyperv_fb.c
  */
-
+#define USE_OLD_CHANNEL_API 1
 #include <linux/hyperv.h>
 
 #include <drm/drm_print.h>

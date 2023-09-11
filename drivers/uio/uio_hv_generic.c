@@ -18,6 +18,7 @@
  *    > /sys/bus/vmbus/drivers/uio_hv_generic/bind
  */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+#define USE_OLD_CHANNEL_API 1
 
 #include <linux/device.h>
 #include <linux/kernel.h>
@@ -205,7 +206,7 @@ hv_uio_open(struct uio_info *info, struct inode *inode)
 	vmbus_set_chn_rescind_callback(dev->channel, hv_uio_rescind);
 	vmbus_set_sc_create_callback(dev->channel, hv_uio_new_channel);
 
-	ret = vmbus_connect_ring(dev->channel,
+	ret = vmbus_connect_ring(dev->channel, USE_OLD_CHANNEL_API
 				 hv_uio_channel_cb, dev->channel);
 	if (ret == 0)
 		dev->channel->inbound.ring_buffer->interrupt_mask = 1;

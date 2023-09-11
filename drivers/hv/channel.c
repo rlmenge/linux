@@ -651,7 +651,7 @@ static void vmbus_free_requestor(struct vmbus_requestor *rqstor)
 }
 
 static int __vmbus_open(struct vmbus_channel *newchannel,
-		       void *userdata, u32 userdatalen,
+		       void *userdata, u32 userdatalen, bool old_channel_api
 		       void (*onchannelcallback)(void *context), void *context)
 {
 	struct vmbus_channel_open_channel *open_msg;
@@ -677,7 +677,11 @@ static int __vmbus_open(struct vmbus_channel *newchannel,
 	}
 
 	newchannel->state = CHANNEL_OPENING_STATE;
-	newchannel->onchannel_callback = onchannelcallback;
+	newchannel->old_callback_api = old_channel_api;
+	if (newchannel->old_callback_api)
+		newchannel->onchannel_callback_old = (void(*)(void*))onchannelcallback;
+	else 
+		newchannel->onchannel_callback = (void(*)(struct vmbus_channel *, void*))onchannelcallback;
 	newchannel->channel_callback_context = context;
 
 	if (!newchannel->max_pkt_size)
@@ -791,10 +795,10 @@ error_clean_ring:
 /*
  * vmbus_connect_ring - Open the channel but reuse ring buffer
  */
-int vmbus_connect_ring(struct vmbus_channel *newchannel,
+int vmbus_connect_ring(struct vmbus_channel *newchannel, bool old_channel_api
 		       void (*onchannelcallback)(void *context), void *context)
 {
-	return  __vmbus_open(newchannel, NULL, 0, onchannelcallback, context);
+	return  __vmbus_open(newchannel, NULL, 0, old_channel_api, onchannelcallback, context);
 }
 EXPORT_SYMBOL_GPL(vmbus_connect_ring);
 
@@ -803,7 +807,7 @@ EXPORT_SYMBOL_GPL(vmbus_connect_ring);
  */
 int vmbus_open(struct vmbus_channel *newchannel,
 	       u32 send_ringbuffer_size, u32 recv_ringbuffer_size,
-	       void *userdata, u32 userdatalen,
+	       void *userdata, u32 userdatalen, bool old_channel_api
 	       void (*onchannelcallback)(void *context), void *context)
 {
 	int err;
@@ -813,7 +817,7 @@ int vmbus_open(struct vmbus_channel *newchannel,
 	if (err)
 		return err;
 
-	err = __vmbus_open(newchannel, userdata, userdatalen,
+	err = __vmbus_open(newchannel, userdata, userdatalen, old_channel_api,
 			   onchannelcallback, context);
 	if (err)
 		vmbus_free_ring(newchannel);
