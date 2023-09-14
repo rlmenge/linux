@@ -661,6 +661,8 @@ static int __vmbus_open(struct vmbus_channel *newchannel,
 	unsigned long flags;
 	int err;
 
+	newchannel->old_callback_api = true;
+
 	if (userdatalen > MAX_USER_DEFINED_BYTES)
 		return -EINVAL;
 
@@ -677,7 +679,147 @@ static int __vmbus_open(struct vmbus_channel *newchannel,
 	}
 
 	newchannel->state = CHANNEL_OPENING_STATE;
-	newchannel->onchannel_callback = onchannelcallback;
+	newchannel->onchannel_callback_old = (void(*)(void*))onchannelcallback;
+	newchannel->channel_callback_context = context;
+
+	if (!newchannel->max_pkt_size)
+		newchannel->max_pkt_size = VMBUS_DEFAULT_MAX_PKT_SIZE;
+
+	/* Establish the gpadl for the ring buffer */
+	newchannel->ringbuffer_gpadlhandle.gpadl_handle = 0;
+
+	err = __vmbus_establish_gpadl(newchannel, HV_GPADL_RING,
+				      page_address(newchannel->ringbuffer_page),
+				      (send_pages + recv_pages) << PAGE_SHIFT,
+				      newchannel->ringbuffer_send_offset << PAGE_SHIFT,
+				      &newchannel->ringbuffer_gpadlhandle);
+	if (err)
+		goto error_clean_ring;
+
+	err = hv_ringbuffer_init(&newchannel->outbound,
+				 page, send_pages, 0);
+	if (err)
+		goto error_free_gpadl;
+
+	err = hv_ringbuffer_init(&newchannel->inbound, &page[send_pages],
+				 recv_pages, newchannel->max_pkt_size);
+	if (err)
+		goto error_free_gpadl;
+
+	/* Create and init the channel open message */
+	open_info = kzalloc(sizeof(*open_info) +
+			   sizeof(struct vmbus_channel_open_channel),
+			   GFP_KERNEL);
+	if (!open_info) {
+		err = -ENOMEM;
+		goto error_free_gpadl;
+	}
+
+	init_completion(&open_info->waitevent);
+	open_info->waiting_channel = newchannel;
+
+	open_msg = (struct vmbus_channel_open_channel *)open_info->msg;
+	open_msg->header.msgtype = CHANNELMSG_OPENCHANNEL;
+	open_msg->openid = newchannel->offermsg.child_relid;
+	open_msg->child_relid = newchannel->offermsg.child_relid;
+	open_msg->ringbuffer_gpadlhandle
+		= newchannel->ringbuffer_gpadlhandle.gpadl_handle;
+	/*
+	 * The unit of ->downstream_ringbuffer_pageoffset is HV_HYP_PAGE and
+	 * the unit of ->ringbuffer_send_offset (i.e. send_pages) is PAGE, so
+	 * here we calculate it into HV_HYP_PAGE.
+	 */
+	open_msg->downstream_ringbuffer_pageoffset =
+		hv_ring_gpadl_send_hvpgoffset(send_pages << PAGE_SHIFT);
+	open_msg->target_vp = hv_cpu_number_to_vp_number(newchannel->target_cpu);
+
+	if (userdatalen)
+		memcpy(open_msg->userdata, userdata, userdatalen);
+
+	spin_lock_irqsave(&vmbus_connection.channelmsg_lock, flags);
+	list_add_tail(&open_info->msglistentry,
+		      &vmbus_connection.chn_msg_list);
+	spin_unlock_irqrestore(&vmbus_connection.channelmsg_lock, flags);
+
+	if (newchannel->rescind) {
+		err = -ENODEV;
+		goto error_clean_msglist;
+	}
+
+	err = vmbus_post_msg(open_msg,
+			     sizeof(struct vmbus_channel_open_channel), true);
+
+	trace_vmbus_open(open_msg, err);
+
+	if (err != 0)
+		goto error_clean_msglist;
+
+	wait_for_completion(&open_info->waitevent);
+
+	spin_lock_irqsave(&vmbus_connection.channelmsg_lock, flags);
+	list_del(&open_info->msglistentry);
+	spin_unlock_irqrestore(&vmbus_connection.channelmsg_lock, flags);
+
+	if (newchannel->rescind) {
+		err = -ENODEV;
+		goto error_free_info;
+	}
+
+	if (open_info->response.open_result.status) {
+		err = -EAGAIN;
+		goto error_free_info;
+	}
+
+	newchannel->state = CHANNEL_OPENED_STATE;
+	kfree(open_info);
+	return 0;
+
+error_clean_msglist:
+	spin_lock_irqsave(&vmbus_connection.channelmsg_lock, flags);
+	list_del(&open_info->msglistentry);
+	spin_unlock_irqrestore(&vmbus_connection.channelmsg_lock, flags);
+error_free_info:
+	kfree(open_info);
+error_free_gpadl:
+	vmbus_teardown_gpadl(newchannel, &newchannel->ringbuffer_gpadlhandle);
+error_clean_ring:
+	hv_ringbuffer_cleanup(&newchannel->outbound);
+	hv_ringbuffer_cleanup(&newchannel->inbound);
+	vmbus_free_requestor(&newchannel->requestor);
+	newchannel->state = CHANNEL_OPEN_STATE;
+	return err;
+}
+
+static int __vmbus_open_channel(struct vmbus_channel *newchannel,
+		       void *userdata, u32 userdatalen,
+		       void (*onchannelcallback)(struct vmbus_channel *, void *context), void *context)
+{
+	struct vmbus_channel_open_channel *open_msg;
+	struct vmbus_channel_msginfo *open_info = NULL;
+	struct page *page = newchannel->ringbuffer_page;
+	u32 send_pages, recv_pages;
+	unsigned long flags;
+	int err;
+
+	newchannel->old_callback_api = false;
+
+	if (userdatalen > MAX_USER_DEFINED_BYTES)
+		return -EINVAL;
+
+	send_pages = newchannel->ringbuffer_send_offset;
+	recv_pages = newchannel->ringbuffer_pagecount - send_pages;
+
+	if (newchannel->state != CHANNEL_OPEN_STATE)
+		return -EINVAL;
+
+	/* Create and init requestor */
+	if (newchannel->rqstor_size) {
+		if (vmbus_alloc_requestor(&newchannel->requestor, newchannel->rqstor_size))
+			return -ENOMEM;
+	}
+
+	newchannel->state = CHANNEL_OPENING_STATE;
+	newchannel->onchannel_callback = (void(*)(struct vmbus_channel *, void*))onchannelcallback;
 	newchannel->channel_callback_context = context;
 
 	if (!newchannel->max_pkt_size)
@@ -799,12 +941,22 @@ int vmbus_connect_ring(struct vmbus_channel *newchannel,
 EXPORT_SYMBOL_GPL(vmbus_connect_ring);
 
 /*
+ * vmbus_connect_ring - Open the channel but reuse ring buffer
+ */
+int vmbus_channel_connect_ring(struct vmbus_channel *newchannel,
+		       void (*onchannelcallback)(struct vmbus_channel *, void *context), void *context)
+{
+	return  __vmbus_open_channel(newchannel, NULL, 0, onchannelcallback, context);
+}
+EXPORT_SYMBOL_GPL(vmbus_channel_connect_ring);
+
+/*
  * vmbus_open - Open the specified channel.
  */
 int vmbus_open(struct vmbus_channel *newchannel,
 	       u32 send_ringbuffer_size, u32 recv_ringbuffer_size,
 	       void *userdata, u32 userdatalen,
-	       void (*onchannelcallback)(void *context), void *context)
+	       void (*onchannelcallback_old)(void *context), void *context)
 {
 	int err;
 
@@ -814,13 +966,37 @@ int vmbus_open(struct vmbus_channel *newchannel,
 		return err;
 
 	err = __vmbus_open(newchannel, userdata, userdatalen,
-			   onchannelcallback, context);
+			   onchannelcallback_old, context);
 	if (err)
 		vmbus_free_ring(newchannel);
 
 	return err;
 }
 EXPORT_SYMBOL_GPL(vmbus_open);
+
+/*
+ * vmbus_open - Open the specified channel.
+ */
+int vmbus_open_channel(struct vmbus_channel *newchannel,
+	       u32 send_ringbuffer_size, u32 recv_ringbuffer_size,
+	       void *userdata, u32 userdatalen,
+	       void (*onchannelcallback)(struct vmbus_channel *, void *context), void *context)
+{
+	int err;
+
+	err = vmbus_alloc_ring(newchannel, send_ringbuffer_size,
+			       recv_ringbuffer_size);
+	if (err)
+		return err;
+
+	err = __vmbus_open_channel(newchannel, userdata, userdatalen,
+			       onchannelcallback, context);
+	if (err)
+		vmbus_free_ring(newchannel);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(vmbus_open_channel);
 
 /*
  * vmbus_teardown_gpadl -Teardown the specified GPADL handle
@@ -911,7 +1087,10 @@ void vmbus_reset_channel_cb(struct vmbus_channel *channel)
 
 	/* See the inline comments in vmbus_chan_sched(). */
 	spin_lock_irqsave(&channel->sched_lock, flags);
-	channel->onchannel_callback = NULL;
+	if (channel->old_callback_api)
+		channel->onchannel_callback_old = NULL;
+	else
+		channel->onchannel_callback = NULL;
 	spin_unlock_irqrestore(&channel->sched_lock, flags);
 
 	channel->sc_creation_callback = NULL;
