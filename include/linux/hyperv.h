@@ -1553,7 +1553,7 @@ void vmbus_free_mmio(resource_size_t start, resource_size_t size);
 struct hv_util_service {
 	u8 *recv_buffer;
 	void *channel;
-	void (*util_cb)(void *);
+	void (*util_cb)(struct vmbus_channel *, void *);
 	int (*util_init)(struct hv_util_service *);
 	void (*util_deinit)(void);
 	int (*util_pre_suspend)(void);
