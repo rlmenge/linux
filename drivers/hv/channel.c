@@ -652,7 +652,7 @@ static void vmbus_free_requestor(struct vmbus_requestor *rqstor)
 
 static int __vmbus_open(struct vmbus_channel *newchannel,
 		       void *userdata, u32 userdatalen,
-		       void (*onchannelcallback)(void *context), void *context)
+		       void (*onchannelcallback), void *context)
 {
 	struct vmbus_channel_open_channel *open_msg;
 	struct vmbus_channel_msginfo *open_info = NULL;
@@ -677,7 +677,13 @@ static int __vmbus_open(struct vmbus_channel *newchannel,
 	}
 
 	newchannel->state = CHANNEL_OPENING_STATE;
-	newchannel->onchannel_callback = onchannelcallback;
+	if (newchannel->old_callback_api)
+	{
+		newchannel->onchannel_callback_old = (void (*)(void *context))onchannelcallback;
+	} else {
+		newchannel->onchannel_callback = (onchannel_t *)onchannelcallback;
+	}
+
 	newchannel->channel_callback_context = context;
 
 	if (!newchannel->max_pkt_size)

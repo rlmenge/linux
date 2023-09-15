@@ -28,6 +28,7 @@
 
 #define MAX_PAGE_BUFFER_COUNT				32
 #define MAX_MULTIPAGE_BUFFER_COUNT			32 /* 128K */
+#define USE_OLD_CHANNEL_API 1
 
 #pragma pack(push, 1)
 
@@ -814,6 +815,8 @@ struct vmbus_gpadl {
 	void *buffer;
 };
 
+typedef void onchannel_t(void *context, struct vmbus_channel *chan);
+
 struct vmbus_channel {
 	struct list_head listentry;
 
@@ -863,7 +866,11 @@ struct vmbus_channel {
 
 	/* Channel callback's invoked in softirq context */
 	struct tasklet_struct callback_event;
-	void (*onchannel_callback)(void *context);
+	bool old_callback_api;
+	union {
+		void (*onchannel_callback_old)(void *context);
+		onchannel_t *onchannel_callback;
+	};
 	void *channel_callback_context;
 
 	void (*change_target_cpu_callback)(struct vmbus_channel *channel,
