@@ -59,6 +59,7 @@
 #define PCI_MAKE_VERSION(major, minor) ((u32)(((major) << 16) | (minor)))
 #define PCI_MAJOR_VERSION(version) ((u32)(version) >> 16)
 #define PCI_MINOR_VERSION(version) ((u32)(version) & 0xff)
+#define USE_OLD_CALLBACK_API 1
 
 enum pci_protocol_version_t {
 	PCI_PROTOCOL_VERSION_1_1 = PCI_MAKE_VERSION(1, 1),	/* Win10 */
@@ -573,7 +574,7 @@ struct hv_pci_compl {
 	s32 completion_status;
 };
 
-static void hv_pci_onchannelcallback(void *context);
+static void hv_pci_onchannelcallback(void *context, struct vmbus_channel *chan);
 
 #ifdef CONFIG_X86
 #define DELIVERY_MODE	APIC_DELIVERY_MODE_FIXED
@@ -2000,7 +2001,7 @@ static void hv_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 			spin_unlock_irqrestore(&channel->sched_lock, flags);
 			goto enable_tasklet;
 		}
-		hv_pci_onchannelcallback(hbus);
+		hv_pci_onchannelcallback(hbus, hbus->hdev->channel);
 		spin_unlock_irqrestore(&channel->sched_lock, flags);
 
 		udelay(100);
@@ -2913,7 +2914,7 @@ static void hv_pci_eject_device(struct hv_pci_dev *hpdev)
  * This function is invoked whenever the host sends a packet to
  * this channel (which is private to this root PCI bus).
  */
-static void hv_pci_onchannelcallback(void *context)
+static void hv_pci_onchannelcallback(void *context, struct vmbus_channel *chan)
 {
 	const int packet_size = 0x100;
 	int ret;
@@ -3710,6 +3711,8 @@ static int hv_pci_probe(struct hv_device *hdev,
 	hdev->channel->next_request_id_callback = vmbus_next_request_id;
 	hdev->channel->request_addr_callback = vmbus_request_addr;
 	hdev->channel->rqstor_size = HV_PCI_RQSTOR_SIZE;
+
+	hdev->channel->old_callback_api = USE_OLD_CALLBACK_API
 
 	ret = vmbus_open(hdev->channel, pci_ring_size, pci_ring_size, NULL, 0,
 			 hv_pci_onchannelcallback, hbus);
