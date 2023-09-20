@@ -814,6 +814,8 @@ struct vmbus_gpadl {
 	void *buffer;
 };
 
+typedef void onchannel_t(void *context, struct vmbus_channel *chan);
+
 struct vmbus_channel {
 	struct list_head listentry;
 
@@ -863,7 +865,8 @@ struct vmbus_channel {
 
 	/* Channel callback's invoked in softirq context */
 	struct tasklet_struct callback_event;
-	void (*onchannel_callback)(void *context);
+	void (*onchannel_callback_old)(void *context);
+	onchannel_t *onchannel_callback;
 	void *channel_callback_context;
 
 	void (*change_target_cpu_callback)(struct vmbus_channel *channel,
@@ -1175,7 +1178,10 @@ int vmbus_alloc_ring(struct vmbus_channel *channel,
 void vmbus_free_ring(struct vmbus_channel *channel);
 
 int vmbus_connect_ring(struct vmbus_channel *channel,
-		       void (*onchannel_callback)(void *context),
+		       void (*onchannel_callback_old)(void *context),
+		       void *context);
+int vmbus_channel_connect_ring(struct vmbus_channel *channel,
+		       onchannel_t *onchannel_callback,
 		       void *context);
 int vmbus_disconnect_ring(struct vmbus_channel *channel);
 
@@ -1184,7 +1190,15 @@ extern int vmbus_open(struct vmbus_channel *channel,
 			    u32 recv_ringbuffersize,
 			    void *userdata,
 			    u32 userdatalen,
-			    void (*onchannel_callback)(void *context),
+			    void (*onchannel_callback_old)(void *context),
+			    void *context);
+
+extern int vmbus_open_channel(struct vmbus_channel *channel,
+			    u32 send_ringbuffersize,
+			    u32 recv_ringbuffersize,
+			    void *userdata,
+			    u32 userdatalen,
+			    onchannel_t *onchannel_callback,
 			    void *context);
 
 extern void vmbus_close(struct vmbus_channel *channel);
