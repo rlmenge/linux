@@ -115,7 +115,8 @@ static int hv_shutdown_init(struct hv_util_service *srv)
 	return 0;
 }
 
-static void shutdown_onchannelcallback(void *context);
+static void shutdown_onchannelcallback(void *context,
+	struct vmbus_channel *chan);
 static struct hv_util_service util_shutdown = {
 	.util_cb = shutdown_onchannelcallback,
 	.util_init = hv_shutdown_init,
@@ -125,7 +126,8 @@ static int hv_timesync_init(struct hv_util_service *srv);
 static int hv_timesync_pre_suspend(void);
 static void hv_timesync_deinit(void);
 
-static void timesync_onchannelcallback(void *context);
+static void timesync_onchannelcallback(void *context,
+	struct vmbus_channel *chan);
 static struct hv_util_service util_timesynch = {
 	.util_cb = timesync_onchannelcallback,
 	.util_init = hv_timesync_init,
@@ -133,7 +135,8 @@ static struct hv_util_service util_timesynch = {
 	.util_deinit = hv_timesync_deinit,
 };
 
-static void heartbeat_onchannelcallback(void *context);
+static void heartbeat_onchannelcallback(void *context,
+	struct vmbus_channel *chan);
 static struct hv_util_service util_heartbeat = {
 	.util_cb = heartbeat_onchannelcallback,
 };
@@ -182,7 +185,7 @@ static DECLARE_WORK(shutdown_work, perform_shutdown);
  */
 static DECLARE_WORK(restart_work, perform_restart);
 
-static void shutdown_onchannelcallback(void *context)
+static void shutdown_onchannelcallback(void *context, struct vmbus_channel *chan)
 {
 	struct vmbus_channel *channel = context;
 	struct work_struct *work = NULL;
@@ -391,7 +394,7 @@ static inline void adj_guesttime(u64 hosttime, u64 reftime, u8 adj_flags)
 /*
  * Time Sync Channel message handler.
  */
-static void timesync_onchannelcallback(void *context)
+static void timesync_onchannelcallback(void *context, struct vmbus_channel *chan)
 {
 	struct vmbus_channel *channel = context;
 	u32 recvlen;
@@ -484,7 +487,7 @@ static void timesync_onchannelcallback(void *context)
  * Every two seconds, Hyper-V send us a heartbeat request message.
  * we respond to this message, and Hyper-V knows we are alive.
  */
-static void heartbeat_onchannelcallback(void *context)
+static void heartbeat_onchannelcallback(void *context, struct vmbus_channel *chan)
 {
 	struct vmbus_channel *channel = context;
 	u32 recvlen;
@@ -586,7 +589,7 @@ static int util_probe(struct hv_device *dev,
 
 	hv_set_drvdata(dev, srv);
 
-	ret = vmbus_open(dev->channel, HV_UTIL_RING_SEND_SIZE,
+	ret = vmbus_open_channel(dev->channel, HV_UTIL_RING_SEND_SIZE,
 			 HV_UTIL_RING_RECV_SIZE, NULL, 0, srv->util_cb,
 			 dev->channel);
 	if (ret)
@@ -644,7 +647,7 @@ static int util_resume(struct hv_device *dev)
 			return ret;
 	}
 
-	ret = vmbus_open(dev->channel, HV_UTIL_RING_SEND_SIZE,
+	ret = vmbus_open_channel(dev->channel, HV_UTIL_RING_SEND_SIZE,
 			 HV_UTIL_RING_RECV_SIZE, NULL, 0, srv->util_cb,
 			 dev->channel);
 	return ret;
