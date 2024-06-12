@@ -223,7 +223,7 @@ fcopy_respond_to_host(int error)
 				VM_PKT_DATA_INBAND, 0);
 }
 
-void hv_fcopy_onchannelcallback(void *context)
+void hv_fcopy_onchannelcallback(void *context, struct vmbus_channel *chan)
 {
 	struct vmbus_channel *channel = context;
 	u32 recvlen;
