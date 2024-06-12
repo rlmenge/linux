@@ -1263,9 +1263,11 @@ static void vmbus_chan_sched(struct hv_per_cpu_context *hv_cpu)
 		bool channelapiv1 = false;
 		if (channel->onchannel_callback_v1 != NULL) {
 			callback_fn_v1 = channel->onchannel_callback_v1;
+			channelapiv1 = true;
+			printk("vmbus_chan_sched : for_each_set_bit : in v1 api");
 		} else if (channel->onchannel_callback != NULL) {
 			callback_fn = channel->onchannel_callback;
-			channelapiv1 = true;
+			printk("[ERROR] vmbus_chan_sched : for_each_set_bit : in v2 api - SHOULD NOT HAPPEN");
 		} else {
 			goto sched_unlock;
 		}
