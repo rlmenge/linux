@@ -305,7 +305,7 @@ static void mousevsc_on_receive(struct hv_device *device,
 
 }
 
-static void mousevsc_on_channel_callback(void *context)
+static void mousevsc_on_channel_callback(void *context, struct vmbus_channel *channel)
 {
 	struct hv_device *device = context;
 	struct vmpacket_descriptor *desc;
@@ -445,7 +445,7 @@ static int mousevsc_probe(struct hv_device *device,
 	if (!input_dev)
 		return -ENOMEM;
 
-	ret = vmbus_open(device->channel,
+	ret = vmbus_open_channel(device->channel,
 		INPUTVSC_SEND_RING_BUFFER_SIZE,
 		INPUTVSC_RECV_RING_BUFFER_SIZE,
 		NULL,
@@ -544,7 +544,7 @@ static int mousevsc_resume(struct hv_device *dev)
 {
 	int ret;
 
-	ret = vmbus_open(dev->channel,
+	ret = vmbus_open_channel(dev->channel,
 			 INPUTVSC_SEND_RING_BUFFER_SIZE,
 			 INPUTVSC_RECV_RING_BUFFER_SIZE,
 			 NULL, 0,

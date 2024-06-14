@@ -235,7 +235,7 @@ static void hv_kbd_handle_received_packet(struct hv_device *hv_dev,
 	}
 }
 
-static void hv_kbd_on_channel_callback(void *context)
+static void hv_kbd_on_channel_callback(void *context, struct vmbus_channel *channel)
 {
 	struct vmpacket_descriptor *desc;
 	struct hv_device *hv_dev = context;
@@ -342,7 +342,7 @@ static int hv_kbd_probe(struct hv_device *hv_dev,
 	hv_serio->start = hv_kbd_start;
 	hv_serio->stop = hv_kbd_stop;
 
-	error = vmbus_open(hv_dev->channel,
+	error = vmbus_open_channel(hv_dev->channel,
 			   KBD_VSC_SEND_RING_BUFFER_SIZE,
 			   KBD_VSC_RECV_RING_BUFFER_SIZE,
 			   NULL, 0,
@@ -391,7 +391,7 @@ static int hv_kbd_resume(struct hv_device *hv_dev)
 {
 	int ret;
 
-	ret = vmbus_open(hv_dev->channel,
+	ret = vmbus_open_channel(hv_dev->channel,
 			 KBD_VSC_SEND_RING_BUFFER_SIZE,
 			 KBD_VSC_RECV_RING_BUFFER_SIZE,
 			 NULL, 0,

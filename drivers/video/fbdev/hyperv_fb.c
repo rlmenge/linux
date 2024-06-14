@@ -489,7 +489,7 @@ static void synthvid_recv_sub(struct hv_device *hdev)
 }
 
 /* Receive callback for messages from the host */
-static void synthvid_receive(void *ctx)
+static void synthvid_receive(void *ctx, struct vmbus_channel *channel)
 {
 	struct hv_device *hdev = ctx;
 	struct fb_info *info = hv_get_drvdata(hdev);
@@ -616,7 +616,7 @@ static int synthvid_connect_vsp(struct hv_device *hdev)
 	struct hvfb_par *par = info->par;
 	int ret;
 
-	ret = vmbus_open(hdev->channel, RING_BUFSIZE, RING_BUFSIZE,
+	ret = vmbus_open_channel(hdev->channel, RING_BUFSIZE, RING_BUFSIZE,
 			 NULL, 0, synthvid_receive, hdev);
 	if (ret) {
 		pr_err("Unable to open vmbus channel\n");

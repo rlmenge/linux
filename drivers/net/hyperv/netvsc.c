@@ -1693,10 +1693,9 @@ int netvsc_poll(struct napi_struct *napi, int budget)
 /* Call back when data is available in host ring buffer.
  * Processing is deferred until network softirq (NAPI)
  */
-void netvsc_channel_cb(void *context)
+void netvsc_channel_cb(void *context, struct vmbus_channel *channel)
 {
 	struct netvsc_channel *nvchan = context;
-	struct vmbus_channel *channel = nvchan->channel;
 	struct hv_ring_buffer_info *rbi = &channel->inbound;
 
 	/* preload first vmpacket descriptor */
@@ -1774,7 +1773,7 @@ struct netvsc_device *netvsc_device_add(struct hv_device *device,
 	device->channel->rqstor_size = netvsc_rqstor_size(netvsc_ring_bytes);
 	device->channel->max_pkt_size = NETVSC_MAX_PKT_SIZE;
 
-	ret = vmbus_open(device->channel, netvsc_ring_bytes,
+	ret = vmbus_open_channel(device->channel, netvsc_ring_bytes,
 			 netvsc_ring_bytes,  NULL, 0,
 			 netvsc_channel_cb, net_device->chan_table);
 

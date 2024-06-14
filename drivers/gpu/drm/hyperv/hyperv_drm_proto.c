@@ -448,7 +448,7 @@ static void hyperv_receive_sub(struct hv_device *hdev)
 	}
 }
 
-static void hyperv_receive(void *ctx)
+static void hyperv_receive(void *ctx, struct vmbus_channel *channel)
 {
 	struct hv_device *hdev = ctx;
 	struct hyperv_drm_device *hv = hv_get_drvdata(hdev);
@@ -478,7 +478,7 @@ int hyperv_connect_vsp(struct hv_device *hdev)
 	struct drm_device *dev = &hv->dev;
 	int ret;
 
-	ret = vmbus_open(hdev->channel, VMBUS_RING_BUFSIZE, VMBUS_RING_BUFSIZE,
+	ret = vmbus_open_channel(hdev->channel, VMBUS_RING_BUFSIZE, VMBUS_RING_BUFSIZE,
 			 NULL, 0, hyperv_receive, hdev);
 	if (ret) {
 		drm_err(dev, "Unable to open vmbus channel\n");
