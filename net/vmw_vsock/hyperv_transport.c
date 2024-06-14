@@ -244,13 +244,9 @@ static int hvs_send_data(struct vmbus_channel *chan,
 	return __hvs_send_data(chan, &send_buf->hdr, to_write);
 }
 
-static void hvs_channel_cb(void *ctx)
+static void hvs_channel_cb(void *ctx, struct vmbus_channel *chan)
 {
 	struct sock *sk = (struct sock *)ctx;
-	struct vsock_sock *vsk = vsock_sk(sk);
-	struct hvsock *hvs = vsk->trans;
-	struct vmbus_channel *chan = hvs->chan;
-
 	if (hvs_channel_readable(chan))
 		sk->sk_data_ready(sk);
 
@@ -383,7 +379,7 @@ static void hvs_open_connection(struct vmbus_channel *chan)
 
 	chan->max_pkt_size = HVS_MAX_PKT_SIZE;
 
-	ret = vmbus_open(chan, sndbuf, rcvbuf, NULL, 0, hvs_channel_cb,
+	ret = vmbus_open_channel(chan, sndbuf, rcvbuf, NULL, 0, hvs_channel_cb,
 			 conn_from_host ? new : sk);
 	if (ret != 0) {
 		if (conn_from_host) {

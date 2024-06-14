@@ -361,7 +361,7 @@ static struct scsi_transport_template *fc_transport_template;
 #endif
 
 static struct scsi_host_template scsi_driver;
-static void storvsc_on_channel_callback(void *context);
+static void storvsc_on_channel_callback(void *context, struct vmbus_channel *channel);
 
 #define STORVSC_MAX_LUNS_PER_TARGET			255
 #define STORVSC_MAX_TARGETS				2
@@ -687,7 +687,7 @@ static void handle_sc_creation(struct vmbus_channel *new_sc)
 
 	new_sc->next_request_id_callback = storvsc_next_request_id;
 
-	ret = vmbus_open(new_sc,
+	ret = vmbus_open_channel(new_sc,
 			 aligned_ringbuffer_size,
 			 aligned_ringbuffer_size,
 			 (void *)&props,
@@ -1226,9 +1226,8 @@ static void storvsc_on_receive(struct storvsc_device *stor_device,
 	}
 }
 
-static void storvsc_on_channel_callback(void *context)
+static void storvsc_on_channel_callback(void *context, struct vmbus_channel *channel)
 {
-	struct vmbus_channel *channel = (struct vmbus_channel *)context;
 	const struct vmpacket_descriptor *desc;
 	struct hv_device *device;
 	struct storvsc_device *stor_device;
@@ -1329,12 +1328,12 @@ static int storvsc_connect_to_vsp(struct hv_device *device, u32 ring_size,
 	device->channel->max_pkt_size = STORVSC_MAX_PKT_SIZE;
 	device->channel->next_request_id_callback = storvsc_next_request_id;
 
-	ret = vmbus_open(device->channel,
+	ret = vmbus_open_channel(device->channel,
 			 ring_size,
 			 ring_size,
 			 (void *)&props,
 			 sizeof(struct vmstorage_channel_properties),
-			 storvsc_on_channel_callback, device->channel);
+			 storvsc_on_channel_callback, NULL);
 
 	if (ret != 0)
 		return ret;

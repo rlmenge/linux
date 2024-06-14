@@ -574,7 +574,7 @@ struct hv_pci_compl {
 	s32 completion_status;
 };
 
-static void hv_pci_onchannelcallback(void *context);
+static void hv_pci_onchannelcallback(void *context, struct vmbus_channel *chan);
 
 #ifdef CONFIG_X86
 #define DELIVERY_MODE	APIC_DELIVERY_MODE_FIXED
@@ -1994,7 +1994,7 @@ static void hv_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 			spin_unlock_irqrestore(&channel->sched_lock, flags);
 			goto enable_tasklet;
 		}
-		hv_pci_onchannelcallback(hbus);
+		hv_pci_onchannelcallback(hbus, channel);
 		spin_unlock_irqrestore(&channel->sched_lock, flags);
 
 		udelay(100);
@@ -2907,12 +2907,11 @@ static void hv_pci_eject_device(struct hv_pci_dev *hpdev)
  * This function is invoked whenever the host sends a packet to
  * this channel (which is private to this root PCI bus).
  */
-static void hv_pci_onchannelcallback(void *context)
+static void hv_pci_onchannelcallback(void *context, struct vmbus_channel *chan)
 {
 	const int packet_size = 0x100;
 	int ret;
 	struct hv_pcibus_device *hbus = context;
-	struct vmbus_channel *chan = hbus->hdev->channel;
 	u32 bytes_recvd;
 	u64 req_id, req_addr;
 	struct vmpacket_descriptor *desc;
@@ -3705,7 +3704,7 @@ static int hv_pci_probe(struct hv_device *hdev,
 	hdev->channel->request_addr_callback = vmbus_request_addr;
 	hdev->channel->rqstor_size = HV_PCI_RQSTOR_SIZE;
 
-	ret = vmbus_open(hdev->channel, pci_ring_size, pci_ring_size, NULL, 0,
+	ret = vmbus_open_channel(hdev->channel, pci_ring_size, pci_ring_size, NULL, 0,
 			 hv_pci_onchannelcallback, hbus);
 	if (ret)
 		goto destroy_wq;
@@ -4019,7 +4018,7 @@ static int hv_pci_resume(struct hv_device *hdev)
 	hdev->channel->request_addr_callback = vmbus_request_addr;
 	hdev->channel->rqstor_size = HV_PCI_RQSTOR_SIZE;
 
-	ret = vmbus_open(hdev->channel, pci_ring_size, pci_ring_size, NULL, 0,
+	ret = vmbus_open_channel(hdev->channel, pci_ring_size, pci_ring_size, NULL, 0,
 			 hv_pci_onchannelcallback, hbus);
 	if (ret)
 		return ret;
