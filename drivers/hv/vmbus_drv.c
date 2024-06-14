@@ -1214,7 +1214,6 @@ static void vmbus_chan_sched(struct hv_per_cpu_context *hv_cpu)
 		return;
 
 	for_each_set_bit(relid, recv_int_page, maxbits) {
-		void (*callback_fn_v1)(void *context);
 		onchannel_t *callback_fn;
 		struct vmbus_channel *channel;
 
@@ -1250,17 +1249,9 @@ static void vmbus_chan_sched(struct hv_per_cpu_context *hv_cpu)
 		 */
 		spin_lock(&channel->sched_lock);
 
-		bool channelapiv1 = false;
-		if (channel->onchannel_callback_v1 != NULL) {
-			callback_fn_v1 = channel->onchannel_callback_v1;
-			channelapiv1 = true;
-			printk("vmbus_chan_sched : for_each_set_bit : in v1 api");
-		} else if (channel->onchannel_callback != NULL) {
-			callback_fn = channel->onchannel_callback;
-			printk("[ERROR] vmbus_chan_sched : for_each_set_bit : in v2 api - SHOULD NOT HAPPEN");
-		} else {
+		callback_fn = channel->onchannel_callback;
+		if (unlikely(callback_fn == NULL))
 			goto sched_unlock;
-		}
 
 		trace_vmbus_chan_sched(channel);
 
@@ -1268,11 +1259,7 @@ static void vmbus_chan_sched(struct hv_per_cpu_context *hv_cpu)
 
 		switch (channel->callback_mode) {
 		case HV_CALL_ISR:
-			if (channelapiv1) {
-				(*callback_fn_v1)(channel->channel_callback_context);
-			} else {
-				(*callback_fn)(channel->channel_callback_context, channel);
-			}
+			(*callback_fn)(channel->channel_callback_context, channel);
 			break;
 
 		case HV_CALL_BATCHED:

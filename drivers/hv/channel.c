@@ -632,8 +632,8 @@ static void vmbus_free_requestor(struct vmbus_requestor *rqstor)
 }
 
 static int __vmbus_open(struct vmbus_channel *newchannel,
-		       void *userdata, u32 userdatalen, bool channelapiv1,
-		       void *onchannelcallback, void *context)
+		       void *userdata, u32 userdatalen,
+		       onchannel_t *onchannelcallback, void *context)
 {
 	struct vmbus_channel_open_channel *open_msg;
 	struct vmbus_channel_msginfo *open_info = NULL;
@@ -659,15 +659,8 @@ static int __vmbus_open(struct vmbus_channel *newchannel,
 
 	newchannel->state = CHANNEL_OPENING_STATE;
 
-	if (channelapiv1) {
-		newchannel->onchannel_callback = NULL;
-		newchannel->onchannel_callback_v1 = onchannelcallback;
-		printk("__vmbus_open: using v1");
-	} else {
-		newchannel->onchannel_callback = onchannelcallback;
-		newchannel->onchannel_callback_v1 = NULL;
-		printk("__vmbus_open: using new callback - SHOULD NOT HIT");
-	}
+	printk("v2 callback used!");
+	newchannel->onchannel_callback = onchannelcallback;
 
 	newchannel->channel_callback_context = context;
 
@@ -782,49 +775,12 @@ error_clean_ring:
 /*
  * vmbus_connect_ring - Open the channel but reuse ring buffer
  */
-int vmbus_connect_ring(struct vmbus_channel *newchannel,
-		       void (*onchannelcallback)(void *context), void *context)
-{
-	bool channelapiv1 = true;
-	return  __vmbus_open(newchannel, NULL, 0, channelapiv1, onchannelcallback, context);
-}
-EXPORT_SYMBOL_GPL(vmbus_connect_ring);
-
-/*
- * vmbus_connect_ring - Open the channel but reuse ring buffer
- */
 int vmbus_connect_ring_channel(struct vmbus_channel *newchannel,
 		       onchannel_t *onchannelcallback, void *context)
 {
-	bool channelapiv1 = false;
-	return  __vmbus_open(newchannel, NULL, 0, channelapiv1, onchannelcallback, context);
+	return  __vmbus_open(newchannel, NULL, 0, onchannelcallback, context);
 }
 EXPORT_SYMBOL_GPL(vmbus_connect_ring_channel);
-
-/*
- * vmbus_open - Open the specified channel.
- */
-int vmbus_open(struct vmbus_channel *newchannel,
-	       u32 send_ringbuffer_size, u32 recv_ringbuffer_size,
-	       void *userdata, u32 userdatalen,
-	       void (*onchannelcallback)(void *context), void *context)
-{
-	int err;
-	bool channelapiv1 = true;
-
-	err = vmbus_alloc_ring(newchannel, send_ringbuffer_size,
-			       recv_ringbuffer_size);
-	if (err)
-		return err;
-
-	err = __vmbus_open(newchannel, userdata, userdatalen,
-			   channelapiv1, onchannelcallback, context);
-	if (err)
-		vmbus_free_ring(newchannel);
-
-	return err;
-}
-EXPORT_SYMBOL_GPL(vmbus_open);
 
 /*
  * vmbus_open - Open the specified channel.
@@ -835,7 +791,6 @@ int vmbus_open_channel(struct vmbus_channel *newchannel,
 	       onchannel_t *onchannelcallback, void *context)
 {
 	int err;
-	bool channelapiv1 = false;
 
 	err = vmbus_alloc_ring(newchannel, send_ringbuffer_size,
 			       recv_ringbuffer_size);
@@ -843,7 +798,7 @@ int vmbus_open_channel(struct vmbus_channel *newchannel,
 		return err;
 
 	err = __vmbus_open(newchannel, userdata, userdatalen,
-			   channelapiv1, onchannelcallback, context);
+			onchannelcallback, context);
 	if (err)
 		vmbus_free_ring(newchannel);
 
@@ -943,7 +898,6 @@ void vmbus_reset_channel_cb(struct vmbus_channel *channel)
 	/* See the inline comments in vmbus_chan_sched(). */
 	spin_lock_irqsave(&channel->sched_lock, flags);
 	channel->onchannel_callback = NULL;
-	channel->onchannel_callback_v1 = NULL;
 	spin_unlock_irqrestore(&channel->sched_lock, flags);
 
 	channel->sc_creation_callback = NULL;

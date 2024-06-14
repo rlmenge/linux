@@ -393,7 +393,6 @@ struct vmbus_channel *relid2channel(u32 relid)
 void vmbus_on_event(unsigned long data)
 {
 	struct vmbus_channel *channel = (void *) data;
-	void (*callback_fn_v1)(void *context);
 	onchannel_t *callback_fn;
 
 	trace_vmbus_on_event(channel);
@@ -404,17 +403,13 @@ void vmbus_on_event(unsigned long data)
 	 * there is no driver handling the device. An
 	 * unloading driver sets the onchannel_callback to NULL.
 	 */
-	if (channel->onchannel_callback_v1 != NULL) {
-		callback_fn_v1 = READ_ONCE(channel->onchannel_callback_v1);
-		(*callback_fn_v1)(channel->channel_callback_context);
-		printk("v1 callback used");
-	} else if (channel->onchannel_callback != NULL) {
-		callback_fn = READ_ONCE(channel->onchannel_callback);
-		(*callback_fn)(channel->channel_callback_context, channel);
-		printk("v2 callback used - SHOULD NOT HAPPEN");
-	} else {
+
+	printk("v2 callback used!");
+	callback_fn = READ_ONCE(channel->onchannel_callback);
+	if (unlikely(!callback_fn))
 		return;
-	}
+
+	(*callback_fn)(channel->channel_callback_context, channel);
 
 	if (channel->callback_mode != HV_CALL_BATCHED)
 		return;
