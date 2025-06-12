@@ -1737,6 +1737,54 @@ int cppc_set_enable(int cpu, bool enable)
 }
 EXPORT_SYMBOL_GPL(cppc_set_enable);
 
+int cppc_set_ospm_nom_perf(int cpu, struct cppc_perf_ctrls *perf_ctrls)
+{
+	// PCC subspace id is used to identify the PCC subspace
+	// The PCC subspace is used to transfer ownership of the PCC
+	// to the platform after writing the CPC registers.
+	// PCC is described in https://uefi.org/specs/ACPI/6.6/14_Platform_Communications_Channel.html
+	int pcc_ss_id = per_cpu(cpu_pcc_subspace_idx, cpu);
+	struct cpc_register_resource *ospm_nom_set_reg;
+	// Each cpu has its own CPC descriptor which contains the CPC registers
+	// The CPC descriptor is used to access the CPC registers
+	// This returns the CPC descriptor for the given CPU
+	struct cpc_desc *cpc_desc = per_cpu(cpc_desc_ptr, cpu);
+	struct cppc_pcc_data *pcc_ss_data = NULL;
+	int ret;
+	// confirm there is a CPC descriptor for the CPU
+	if (!cpc_desc) {
+		pr_debug("No CPC descriptor for CPU:%d\n", cpu);
+		return -ENODEV;
+	}
+	// Get the OSPM nominal performance register from the CPC descriptor
+	ospm_nom_set_reg = &cpc_desc->cpc_regs[OSPM_NOMINAL_PERF];
+	// Check if the OSPM nominal performance register is in PCC
+	if (CPC_IN_PCC(ospm_nom_set_reg)) {
+		if (pcc_ss_id < 0) {
+			pr_debug("Invalid pcc_ss_id for CPU:%d\n", cpu);
+			return -ENODEV;
+		}
+		// If the OSPM nominal performance register is in PCC, we need to
+		// acquire the PCC subspace lock to write to the register
+		pcc_ss_data = pcc_data[pcc_ss_id];
+
+		down_write(&pcc_ss_data->pcc_lock);
+
+		ret = cpc_write(cpu, ospm_nom_set_reg, perf_ctrls->ospm_nominal_perf);
+		if (ret)
+			goto out_err;
+
+		/* after writing CPC, transfer the ownership of PCC to platform */
+		ret = send_pcc_cmd(pcc_ss_id, CMD_WRITE);
+	} else if (osc_cpc_flexible_adr_space_confirmed &&
+		   CPC_SUPPORTED(ospm_nom_set_reg) && CPC_IN_FFH(ospm_nom_set_reg)) {
+		ret = cpc_write(cpu, ospm_nom_set_reg, perf_ctrls->ospm_nominal_perf);
+	} else {
+		ret = -ENOTSUPP;
+		pr_debug("_CPC in PCC and _CPC in FFH are not supported\n");
+	}
+}
+
 /**
  * cppc_set_perf - Set a CPU's performance controls.
  * @cpu: CPU for which to set performance controls.

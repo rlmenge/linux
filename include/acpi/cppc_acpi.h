@@ -132,6 +132,7 @@ struct cppc_perf_ctrls {
 	u32 min_perf;
 	u32 desired_perf;
 	u32 energy_perf;
+	u32 ospm_nominal_perf;
 };
 
 struct cppc_perf_fb_ctrs {
