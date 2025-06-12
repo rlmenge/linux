@@ -122,6 +122,7 @@ struct cppc_perf_caps {
 	u32 lowest_freq;
 	u32 nominal_freq;
 	u32 energy_perf;
+	u32 desired_perf;
 	bool auto_sel;
 };
 
